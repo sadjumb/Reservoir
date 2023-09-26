@@ -97,6 +97,22 @@ def loadSignalInDict(good):
     return ca1, ca3
 
 
+def normed(ca):
+    norm = {}
+    for i in ca.keys():
+
+        wa = np.array([removeArts(rec) for rec in ca[i]])
+        normca = np.array([normalization(rec) for rec in wa])
+
+        if len(wa) > 0:
+            meanLine1 = sum(wa)/len(wa)
+            normMeanLine1 = sum(normca)/len(normca)
+        # if i == 400:
+        #    plt.plot(normca3[-1])
+        norm[i] = normca
+    return norm
+
+
 if __name__ == '__main__':
     DATAPATH = 'INPUT_DATA'
     print(os.listdir(os.getcwd()))
@@ -107,9 +123,9 @@ if __name__ == '__main__':
 
     DATAPATH += '/'
     ca1, ca3 = loadSignalInDict(getPaths(DATAPATH))
-    print(type(ca1))
-    print(ca3[100][4][0])
 
+    normed1 = normed(ca1)
+    normed3 = normed(ca3)
     # df = pd.DataFrame.from_dict(ca1)
     #
     # df.to_csv()
