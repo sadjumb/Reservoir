@@ -1,12 +1,11 @@
 import os
 import matplotlib.pyplot as plt
 import numpy as np
-import scipy
+
 import scipy.io as sio
 from scipy.ndimage import gaussian_filter
 from sklearn import preprocessing
-import reservoirpy as rpy
-import pandas as pd
+from reservoirpy.nodes import Reservoir, Ridge
 
 MAXLEN = 11202
 
@@ -16,8 +15,8 @@ def getPaths(path: str()):
     folders = os.listdir(path)
     good = {}
     for amp in INPUT_DATA:
-        good[amp] = [DATAPATH+folder+'/'+filename for folder in folders for filename in os.listdir(
-            path=DATAPATH+folder) if folder == f'{amp}']
+        good[amp] = [path+folder+'/'+filename for folder in folders for filename in os.listdir(
+            path=path+folder) if folder == f'{amp}']
     return good
 
 
@@ -104,28 +103,119 @@ def normed(ca):
         wa = np.array([removeArts(rec) for rec in ca[i]])
         normca = np.array([normalization(rec) for rec in wa])
 
-        if len(wa) > 0:
-            meanLine1 = sum(wa)/len(wa)
-            normMeanLine1 = sum(normca)/len(normca)
+        # if len(wa) > 0:
+        # meanLine = sum(wa)/len(wa)              # ????
+        # normMeanLine = sum(normca)/len(normca)  # ????
         # if i == 400:
         #    plt.plot(normca3[-1])
         norm[i] = normca
     return norm
 
 
-if __name__ == '__main__':
-    DATAPATH = 'INPUT_DATA'
-    print(os.listdir(os.getcwd()))
+def filter(norm):
+    filt = {}
+    for k in norm.keys():
+        filt[k] = np.array([normalization(gausFilter(rec), True)
+                           for rec in norm[k]])
+    return filt
 
-    if DATAPATH not in os.listdir(os.getcwd()):
-        print(f"Path \"{DATAPATH}\" not in current working directory")
+
+def average(filt):
+    averaged = []
+    for amp in filt.keys():
+        tmp = np.array(filt[amp])
+        averaged.append(sum(tmp)/len(tmp))  # ???
+    return averaged
+
+
+def createTrainModel(averaged, num_test):
+    caTest = averaged[num_test]  # зачем решейп???
+    X_tr = np.delete(averaged, num_test, 0)
+    caTrain = []
+    for i in range(len(X_tr)):
+        caTrain.append(X_tr[i])
+
+    print(f'caTest {np.shape(caTest)}')  # .reshape(1, 11202)
+    print(f'X_tr {np.shape(X_tr)}')
+    print(f'caTrain {np.shape(caTrain)}')
+    print()
+    # print(averaged[2])
+    # print(caTest)
+    # print(caTrain[1])
+    return caTest, caTrain
+
+
+def createWorkDirectory(NUMBERTEST):
+    runPath = 'RUN'
+    if runPath not in os.listdir(os.getcwd()):
+        print(f"Path \"{runPath}\" not in current working directory")
+        print(f"Path \"{runPath}\" created")
+        os.mkdir(runPath)
+    runPath += '/'
+
+    if str(NUMBERTEST) in os.listdir(f'./{runPath}'):
+        print(f"Path '{NUMBERTEST}' in ./{runPath} directory")
         os._exit(1)
 
-    DATAPATH += '/'
-    ca1, ca3 = loadSignalInDict(getPaths(DATAPATH))
+    runPath += str(NUMBERTEST) + '/'
+    os.mkdir(runPath)
+    os.mkdir(runPath+'ca1')
+    os.mkdir(runPath+'ca3')
+    os.mkdir(runPath+'plot')
+    return runPath
+
+
+def paint(y1, y2, label1, label2, title):
+    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 5))
+    ax.plot(y1, label=label1, color="blue")
+    ax.plot(y2, label=label2, color="red")
+    ax.grid()
+    fig.legend()
+    ax.set_title(title)
+    plt.show()
+    plt.close(fig)
+
+
+if __name__ == '__main__':
+    DATA_PATH = 'INPUT_DATA'
+    NUMBER_RUN = 0
+    numTest = 0
+
+    if DATA_PATH not in os.listdir(os.getcwd()):
+        print(f"Path \"{DATA_PATH}\" not in current working directory")
+        os._exit(1)
+    DATA_PATH += '/'
+
+    ca1, ca3 = loadSignalInDict(getPaths(DATA_PATH))
 
     normed1 = normed(ca1)
     normed3 = normed(ca3)
-    # df = pd.DataFrame.from_dict(ca1)
-    #
-    # df.to_csv()
+
+    filt1 = filter(normed1)
+    filt3 = filter(normed3)
+
+    averaged1 = average(filt1)
+    averaged3 = average(filt3)
+    # print(np.shape(averaged1))
+
+    print('ca1 shape: ')
+    ca1Test, ca1Train = createTrainModel(averaged1, numTest)  # y
+    print('ca3 shape: ')
+    ca3Test, ca3Train = createTrainModel(averaged3, numTest)  # x
+
+    # paint(ca3Train[3], ca1Train[3], "CA3", "CA1", "Train CA1 and CA3")
+
+    # runPath = createWorkDirectory(NUMBERTEST)
+    # fig.savefig(runPath+'plot/TrainCA1_CA3.jpeg', bbox_inches='tight')
+
+    reservoir = Reservoir(20, lr=0.65, sr=0.05)
+    readout = Ridge(ridge=1e-7)
+    for i in range(len(ca3Train)):
+        train_states = reservoir.run(ca3Train[i][2000:8000], reset=False)
+        readout = readout.fit(train_states, ca1Train[i])
+
+    test_states = reservoir.run(ca3Test[2000:8000])
+    Y_pred = readout.run(test_states)
+
+    # print(np.shape(Y_pred.reshape(len(Y_pred[0]), -1)))
+    paint(Y_pred[0], ca1Test, "Predicted CA1", "Real CA1", "Test")
