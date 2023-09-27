@@ -129,20 +129,30 @@ def average(filt):
 
 
 def createTrainModel(averaged, num_test):
-    caTest = averaged[num_test]  # зачем решейп???
+    caTest = averaged[num_test]
     X_tr = np.delete(averaged, num_test, 0)
     caTrain = []
     for i in range(len(X_tr)):
         caTrain.append(X_tr[i])
 
-    print(f'caTest {np.shape(caTest)}')  # .reshape(1, 11202)
+    print(f'caTest {np.shape(caTest)}')
     print(f'X_tr {np.shape(X_tr)}')
     print(f'caTrain {np.shape(caTrain)}')
     print()
-    # print(averaged[2])
-    # print(caTest)
-    # print(caTrain[1])
     return caTest, caTrain
+
+
+def reservoirRun(param, ridge, ca1Train, ca3Train, ca3Test, segment):
+    reservoir = Reservoir(param[0], lr=param[1], sr=param[2])
+    readout = Ridge(ridge=ridge)
+
+    for i in range(len(ca3Train)):
+        train_states = reservoir.run(
+            ca3Train[i][segment[0]:segment[1]], reset=False)
+        readout = readout.fit(train_states, ca1Train[i])
+
+    test_states = reservoir.run(ca3Test[segment[0]:segment[1]])
+    return readout.run(test_states)
 
 
 def createWorkDirectory(NUMBERTEST):
@@ -208,14 +218,12 @@ if __name__ == '__main__':
     # runPath = createWorkDirectory(NUMBERTEST)
     # fig.savefig(runPath+'plot/TrainCA1_CA3.jpeg', bbox_inches='tight')
 
-    reservoir = Reservoir(20, lr=0.65, sr=0.05)
-    readout = Ridge(ridge=1e-7)
-    for i in range(len(ca3Train)):
-        train_states = reservoir.run(ca3Train[i][2000:8000], reset=False)
-        readout = readout.fit(train_states, ca1Train[i])
-
-    test_states = reservoir.run(ca3Test[2000:8000])
-    Y_pred = readout.run(test_states)
+    # units: int = None, 0 < lr <= 1: float = 1, sr: float | None = None,
+    param = [50, 0.55, 0.1]
+    start, stop = 0, 10000
+    segment = [start, stop]
+    ca3Pred = reservoirRun(
+        param, 1e-7, ca1Train, ca3Train, ca3Test, segment)
 
     # print(np.shape(Y_pred.reshape(len(Y_pred[0]), -1)))
-    paint(Y_pred[0], ca1Test, "Predicted CA1", "Real CA1", "Test")
+    paint(ca3Pred[0], ca1Test, "Predicted CA1", "Real CA1", "Test")
