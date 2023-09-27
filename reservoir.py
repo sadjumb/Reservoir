@@ -190,8 +190,11 @@ def paint(y1, y2, label1, label2, title):
 
 if __name__ == '__main__':
     DATA_PATH = 'INPUT_DATA'
-    NUMBER_RUN = 0
-    numTest = 0
+    NUMBERTEST = 0
+    # numTest = 0
+    param = [50, 0.55, 0.1]
+    start, stop = 0, 10000
+    segment = [start, stop]
 
     if DATA_PATH not in os.listdir(os.getcwd()):
         print(f"Path \"{DATA_PATH}\" not in current working directory")
@@ -199,6 +202,7 @@ if __name__ == '__main__':
     DATA_PATH += '/'
 
     ca1, ca3 = loadSignalInDict(getPaths(DATA_PATH))
+    runPath = createWorkDirectory(NUMBERTEST)
 
     normed1 = normed(ca1)
     normed3 = normed(ca3)
@@ -209,54 +213,53 @@ if __name__ == '__main__':
     averaged1 = average(filt1)
     averaged3 = average(filt3)
 
-    ca1Test, ca1Train = createTrainModel(averaged1, numTest)  # y
-    ca3Test, ca3Train = createTrainModel(averaged3, numTest)  # x
+    for numTest in range(len(averaged1)):
+        ca1Test, ca1Train = createTrainModel(averaged1, numTest)  # y
+        ca3Test, ca3Train = createTrainModel(averaged3, numTest)  # x
+
+        # units: int = None, 0 < lr <= 1: float = 1, sr: float | None = None,
+        ca3Pred = reservoirRun(
+            param, 1e-7, ca1Train, ca3Train, ca3Test, segment)
+
+        # Переписать
+        m = Metrics(MAXLEN)
+        true1 = averaged1[numTest]
+        pred1 = ca3Pred[0]
+
+        trueM1 = m.printMetrics(true1)
+        predM1 = m.printMetrics(pred1)
+
+        coeff1_1 = m.getMetrics(pred1, filt1, filt3)
+        coeff2_1 = m.getMetrics(true1, filt1, filt3)
+
+        fig, ax = plt.subplots(1, figsize=(20, 10), dpi=400)
+        fig.subplots_adjust(left=0.2)
+        x1 = np.linspace(0, len(true1)/20, len(true1))
+        y1 = np.linspace(0, len(pred1)/20, len(pred1))
+
+        left = 0
+        right = MAXLEN/20
+        ax.set_ylim(np.min(np.hstack([true1, pred1])),
+                    np.max(np.hstack([true1, pred1])))
+        ax.set_xlim([left, right])
+        ax.plot(x1, true1, label="true")
+        ax.plot(y1, pred1, label="pred")
+        ax.set_title(f'Test {int(numTest)}. metric = 0.2*({coeff1_1[0]:.2f} - {coeff2_1[0]:.2f})**2 + 0.4*({coeff1_1[1]:.2f} - {coeff2_1[1]:.2f})**2 + 0.1*({coeff1_1[2]:.2f} - {coeff2_1[2]:.2f})**2 + 0.3*({coeff1_1[3]:.2f} - {coeff2_1[3]:.2f})**2 =  {0.2*(coeff1_1[0] - coeff2_1[0])**2 + 0.4*(coeff1_1[1] - coeff2_1[1])**2 + 0.1*(coeff1_1[2] - coeff2_1[2])**2 + 0.3*(coeff1_1[3] - coeff2_1[3])**2}')
+        ax.plot(np.linspace(trueM1[-2]/20, trueM1[-1]/20, (trueM1[-1]-trueM1[-2])), [true1[trueM1[-2]]
+                                                                                     for i in range(trueM1[-2], trueM1[-1])], label="true HW", color='green')
+        ax.axvline(trueM1[1]/20, label="true TD", color='red')
+        ax.axvline(trueM1[2]/20, label="true TR", color='purple')
+        ax.plot(np.linspace(predM1[-2]/20, predM1[-1]/20, (predM1[-1]-predM1[-2])), [
+                pred1[predM1[-2]] for i in range(predM1[-2], predM1[-1])], label="pred HW", color='green')
+        ax.axvline(predM1[1]/20, label="pred TD", color='red')
+        ax.axvline(predM1[2]/20, label="pred TR", color='blue')
+        ax.set_ylabel("V, normalized")
+        ax.set_xlabel("t, seconds")
+        ax.legend()
+        fig.savefig(runPath+f'plot/{numTest}.pdf', bbox_inches='tight')
+        # plt.show()
 
     # paint(ca3Train[3], ca1Train[3], "CA3", "CA1", "Train CA1 and CA3")
 
     # runPath = createWorkDirectory(NUMBERTEST)
-    # fig.savefig(runPath+'plot/TrainCA1_CA3.jpeg', bbox_inches='tight')
-
-    # units: int = None, 0 < lr <= 1: float = 1, sr: float | None = None,
-    param = [50, 0.55, 0.1]
-    start, stop = 0, 10000
-    segment = [start, stop]
-    ca3Pred = reservoirRun(
-        param, 1e-7, ca1Train, ca3Train, ca3Test, segment)
-
-    # Переписать
-    m = Metrics(MAXLEN)
-    true1 = averaged1[numTest]
-    pred1 = ca3Pred[0]
-
-    trueM1 = m.printMetrics(true1)
-    predM1 = m.printMetrics(pred1)
-
-    coeff1_1 = m.getMetrics(pred1, filt1, filt3)
-    coeff2_1 = m.getMetrics(true1, filt1, filt3)
-
-    fig, ax = plt.subplots(1, figsize=(100, 100))
-    fig.subplots_adjust(left=0.2)
-    x1 = np.linspace(0, len(true1)/20, len(true1))
-    y1 = np.linspace(0, len(pred1)/20, len(pred1))
-
-    left = 0
-    right = MAXLEN/20
-    ax.set_ylim(np.min(np.hstack([true1, pred1])),
-                np.max(np.hstack([true1, pred1])))
-    ax.set_xlim([left, right])
-    ax.plot(x1, true1, label="true")
-    ax.plot(y1, pred1, label="pred")
-    ax.set_title(f'Test {int(0)}. metric = 0.2*({coeff1_1[0]:.2f} - {coeff2_1[0]:.2f})**2 + 0.4*({coeff1_1[1]:.2f} - {coeff2_1[1]:.2f})**2 + 0.1*({coeff1_1[2]:.2f} - {coeff2_1[2]:.2f})**2 + 0.3*({coeff1_1[3]:.2f} - {coeff2_1[3]:.2f})**2 =  {0.2*(coeff1_1[0] - coeff2_1[0])**2 + 0.4*(coeff1_1[1] - coeff2_1[1])**2 + 0.1*(coeff1_1[2] - coeff2_1[2])**2 + 0.3*(coeff1_1[3] - coeff2_1[3])**2}')
-    ax.plot(np.linspace(trueM1[-2]/20, trueM1[-1]/20, (trueM1[-1]-trueM1[-2])), [true1[trueM1[-2]]
-                                                                                 for i in range(trueM1[-2], trueM1[-1])], label="true HW", color='green')
-    ax.axvline(trueM1[1]/20, label="true TD", color='red')
-    ax.axvline(trueM1[2]/20, label="true TR", color='purple')
-    ax.plot(np.linspace(predM1[-2]/20, predM1[-1]/20, (predM1[-1]-predM1[-2])), [
-            pred1[predM1[-2]] for i in range(predM1[-2], predM1[-1])], label="pred HW", color='green')
-    ax.axvline(predM1[1]/20, label="pred TD", color='red')
-    ax.axvline(predM1[2]/20, label="pred TR", color='blue')
-    ax.set_ylabel("V, normalized")
-    ax.set_xlabel("t, seconds")
-    ax.legend()
-    plt.show()
+    #
