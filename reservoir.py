@@ -6,6 +6,7 @@ import scipy.io as sio
 from scipy.ndimage import gaussian_filter
 from sklearn import preprocessing
 from reservoirpy.nodes import Reservoir, Ridge
+from metrics import Metrics
 
 MAXLEN = 11202
 
@@ -128,17 +129,18 @@ def average(filt):
     return averaged
 
 
-def createTrainModel(averaged, num_test):
-    caTest = averaged[num_test]
-    X_tr = np.delete(averaged, num_test, 0)
+def createTrainModel(averaged, numTest, printShape=False):
+    caTest = averaged[numTest]
+    Xtr = np.delete(averaged, numTest, 0)
     caTrain = []
-    for i in range(len(X_tr)):
-        caTrain.append(X_tr[i])
+    for i in range(len(Xtr)):
+        caTrain.append(Xtr[i])
 
-    print(f'caTest {np.shape(caTest)}')
-    print(f'X_tr {np.shape(X_tr)}')
-    print(f'caTrain {np.shape(caTrain)}')
-    print()
+    if printShape:
+        print(f'caTest {np.shape(caTest)}')
+        print(f'Xtr {np.shape(Xtr)}')
+        print(f'caTrain {np.shape(caTrain)}')
+        print()
     return caTest, caTrain
 
 
@@ -206,11 +208,8 @@ if __name__ == '__main__':
 
     averaged1 = average(filt1)
     averaged3 = average(filt3)
-    # print(np.shape(averaged1))
 
-    print('ca1 shape: ')
     ca1Test, ca1Train = createTrainModel(averaged1, numTest)  # y
-    print('ca3 shape: ')
     ca3Test, ca3Train = createTrainModel(averaged3, numTest)  # x
 
     # paint(ca3Train[3], ca1Train[3], "CA3", "CA1", "Train CA1 and CA3")
@@ -225,5 +224,39 @@ if __name__ == '__main__':
     ca3Pred = reservoirRun(
         param, 1e-7, ca1Train, ca3Train, ca3Test, segment)
 
-    # print(np.shape(Y_pred.reshape(len(Y_pred[0]), -1)))
-    paint(ca3Pred[0], ca1Test, "Predicted CA1", "Real CA1", "Test")
+    # Переписать
+    m = Metrics(MAXLEN)
+    true1 = averaged1[numTest]
+    pred1 = ca3Pred[0]
+
+    trueM1 = m.printMetrics(true1)
+    predM1 = m.printMetrics(pred1)
+
+    coeff1_1 = m.getMetrics(pred1, filt1, filt3)
+    coeff2_1 = m.getMetrics(true1, filt1, filt3)
+
+    fig, ax = plt.subplots(1, figsize=(100, 100))
+    fig.subplots_adjust(left=0.2)
+    x1 = np.linspace(0, len(true1)/20, len(true1))
+    y1 = np.linspace(0, len(pred1)/20, len(pred1))
+
+    left = 0
+    right = MAXLEN/20
+    ax.set_ylim(np.min(np.hstack([true1, pred1])),
+                np.max(np.hstack([true1, pred1])))
+    ax.set_xlim([left, right])
+    ax.plot(x1, true1, label="true")
+    ax.plot(y1, pred1, label="pred")
+    ax.set_title(f'Test {int(0)}. metric = 0.2*({coeff1_1[0]:.2f} - {coeff2_1[0]:.2f})**2 + 0.4*({coeff1_1[1]:.2f} - {coeff2_1[1]:.2f})**2 + 0.1*({coeff1_1[2]:.2f} - {coeff2_1[2]:.2f})**2 + 0.3*({coeff1_1[3]:.2f} - {coeff2_1[3]:.2f})**2 =  {0.2*(coeff1_1[0] - coeff2_1[0])**2 + 0.4*(coeff1_1[1] - coeff2_1[1])**2 + 0.1*(coeff1_1[2] - coeff2_1[2])**2 + 0.3*(coeff1_1[3] - coeff2_1[3])**2}')
+    ax.plot(np.linspace(trueM1[-2]/20, trueM1[-1]/20, (trueM1[-1]-trueM1[-2])), [true1[trueM1[-2]]
+                                                                                 for i in range(trueM1[-2], trueM1[-1])], label="true HW", color='green')
+    ax.axvline(trueM1[1]/20, label="true TD", color='red')
+    ax.axvline(trueM1[2]/20, label="true TR", color='purple')
+    ax.plot(np.linspace(predM1[-2]/20, predM1[-1]/20, (predM1[-1]-predM1[-2])), [
+            pred1[predM1[-2]] for i in range(predM1[-2], predM1[-1])], label="pred HW", color='green')
+    ax.axvline(predM1[1]/20, label="pred TD", color='red')
+    ax.axvline(predM1[2]/20, label="pred TR", color='blue')
+    ax.set_ylabel("V, normalized")
+    ax.set_xlabel("t, seconds")
+    ax.legend()
+    plt.show()
