@@ -1,4 +1,4 @@
 #INPUT_DATA/
 *.ipynb
 *.zip
-./__pycache__/
+__pycache__/
