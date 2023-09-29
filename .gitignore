@@ -2,3 +2,5 @@
 *.ipynb
 *.zip
 __pycache__/
+
+!*.py
