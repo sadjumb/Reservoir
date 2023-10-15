@@ -7,18 +7,9 @@ from scipy.ndimage import gaussian_filter
 from sklearn import preprocessing
 from reservoirpy.nodes import Reservoir, Ridge
 from metrics import Metrics
+import pickle
 
 MAXLEN = 11202
-
-
-def getInputData(path: str()):
-    INPUT_DATA = [100, 200, 300, 400, 500, 1000]
-    folders = os.listdir(path)
-    good = {}
-    for amp in INPUT_DATA:
-        good[amp] = [path+folder+'/'+filename for folder in folders for filename in os.listdir(
-            path=path+folder) if folder == f'{amp}']
-    return good
 
 
 def normalization(s, needStd=False):
@@ -100,15 +91,8 @@ def loadSignalInDict(good):
 def normed(ca):
     norm = {}
     for i in ca.keys():
-
         wa = np.array([removeArts(rec) for rec in ca[i]])
         normca = np.array([normalization(rec) for rec in wa])
-
-        # if len(wa) > 0:
-        # meanLine = sum(wa)/len(wa)              # ????
-        # normMeanLine = sum(normca)/len(normca)  # ????
-        # if i == 400:
-        #    plt.plot(normca3[-1])
         norm[i] = normca
     return norm
 
@@ -144,9 +128,9 @@ def createTrainModel(averaged, numTest, printShape=False):
     return caTest, caTrain
 
 
-def reservoirRun(param, ridge, ca1Train, ca3Train, ca3Test, segment):
+def reservoirRun(param, ca1Train, ca3Train, ca3Test, segment):
     reservoir = Reservoir(param[0], lr=param[1], sr=param[2])
-    readout = Ridge(ridge=ridge)
+    readout = Ridge(ridge=param[3])
 
     for i in range(len(ca3Train)):
         train_states = reservoir.run(
@@ -166,8 +150,7 @@ def createWorkDirectory(NUMBERTEST):
     runPath += '/'
 
     if str(NUMBERTEST) in os.listdir(f'./{runPath}'):
-        print(f"Path '{NUMBERTEST}' in ./{runPath} directory")
-        os._exit(1)
+        return runPath + str(NUMBERTEST) + '/'
 
     runPath += str(NUMBERTEST) + '/'
     os.mkdir(runPath)
@@ -189,37 +172,31 @@ def paint(y1, y2, label1, label2, title):
 
 
 if __name__ == '__main__':
-    DATA_PATH = 'INPUT_DATA'
-    NUMBERTEST = 0
-    # numTest = 0
-    param = [50, 0.55, 0.1]
+    DATA_PATH = 'DATA_DOWN'
+    NAME_TEST = 'DOWN'
+    best_param = {100: [[], float(100)], 200: [[], float(100)], 300: [[], float(100)], 400: [
+        [], float(100)], 500: [[], float(100)], 1000: [[], float(100)]}
+
+    # units: int = None, 0 < lr <= 1: float = 1, sr: float | None = None, ridge
+    param = [75, 0.55, 0.1, 1e-7]
     start, stop = 0, 10000
     segment = [start, stop]
 
-    if DATA_PATH not in os.listdir(os.getcwd()):
-        print(f"Path \"{DATA_PATH}\" not in current working directory")
-        os._exit(1)
-    DATA_PATH += '/'
+    averaged1 = np.load('./' + DATA_PATH + '/CA1_DOWN.npy')
+    averaged3 = np.load('./' + DATA_PATH + '/CA3_DOWN.npy')
 
-    ca1, ca3 = loadSignalInDict(getInputData(DATA_PATH))
-    runPath = createWorkDirectory(NUMBERTEST)
+    runPath = createWorkDirectory(NAME_TEST)
 
-    normed1 = normed(ca1)
-    normed3 = normed(ca3)
+    if ("bestParam.pkl" in os.listdir('./RUN/' + NAME_TEST)):
+        with open('./RUN/' + NAME_TEST + "/bestParam.pkl", 'rb') as f:
+            best_param = pickle.load(f)
 
-    filt1 = filter(normed1)
-    filt3 = filter(normed3)
-
-    averaged1 = average(filt1)
-    averaged3 = average(filt3)
-
-    for numTest in range(len(averaged1)):
+    for numTest, rate in zip(range(len(averaged1)), best_param):
         ca1Test, ca1Train = createTrainModel(averaged1, numTest)  # y
         ca3Test, ca3Train = createTrainModel(averaged3, numTest)  # x
 
-        # units: int = None, 0 < lr <= 1: float = 1, sr: float | None = None,
         ca3Pred = reservoirRun(
-            param, 1e-7, ca1Train, ca3Train, ca3Test, segment)
+            param, ca1Train, ca3Train, ca3Test, segment)
 
         # Переписать
         m = Metrics(MAXLEN)
@@ -229,8 +206,8 @@ if __name__ == '__main__':
         trueM1 = m.printMetrics(true1)
         predM1 = m.printMetrics(pred1)
 
-        coeff1_1 = m.getMetrics(pred1, filt1, filt3)
-        coeff2_1 = m.getMetrics(true1, filt1, filt3)
+        coeff1_1 = m.getMetrics(pred1, averaged1, averaged3, 'ndarray')
+        coeff2_1 = m.getMetrics(true1, averaged1, averaged3, 'ndarray')
 
         fig, ax = plt.subplots(1, figsize=(20, 10), dpi=400)
         fig.subplots_adjust(left=0.2)
@@ -244,7 +221,13 @@ if __name__ == '__main__':
         ax.set_xlim([left, right])
         ax.plot(x1, true1, label="true")
         ax.plot(y1, pred1, label="pred")
-        ax.set_title(f'Test {int(numTest)}. metric = 0.2*({coeff1_1[0]:.2f} - {coeff2_1[0]:.2f})**2 + 0.4*({coeff1_1[1]:.2f} - {coeff2_1[1]:.2f})**2 + 0.1*({coeff1_1[2]:.2f} - {coeff2_1[2]:.2f})**2 + 0.3*({coeff1_1[3]:.2f} - {coeff2_1[3]:.2f})**2 =  {0.2*(coeff1_1[0] - coeff2_1[0])**2 + 0.4*(coeff1_1[1] - coeff2_1[1])**2 + 0.1*(coeff1_1[2] - coeff2_1[2])**2 + 0.3*(coeff1_1[3] - coeff2_1[3])**2}')
+
+        metr = 0.2*(coeff1_1[0] - coeff2_1[0])**2 + 0.4*(coeff1_1[1] - coeff2_1[1])**2 + \
+            0.1*(coeff1_1[2] - coeff2_1[2])**2 + \
+            0.3*(coeff1_1[3] - coeff2_1[3])**2
+
+        ax.set_title(
+            f'Test {int(numTest)}. metric = 0.2*({coeff1_1[0]:.2f} - {coeff2_1[0]:.2f})**2 + 0.4*({coeff1_1[1]:.2f} - {coeff2_1[1]:.2f})**2 + 0.1*({coeff1_1[2]:.2f} - {coeff2_1[2]:.2f})**2 + 0.3*({coeff1_1[3]:.2f} - {coeff2_1[3]:.2f})**2 =  {metr}')
         ax.plot(np.linspace(trueM1[-2]/20, trueM1[-1]/20, (trueM1[-1]-trueM1[-2])), [true1[trueM1[-2]]
                                                                                      for i in range(trueM1[-2], trueM1[-1])], label="true HW", color='green')
         ax.axvline(trueM1[1]/20, label="true TD", color='red')
@@ -256,10 +239,26 @@ if __name__ == '__main__':
         ax.set_ylabel("V, normalized")
         ax.set_xlabel("t, seconds")
         ax.legend()
-        fig.savefig(runPath+f'plot/{numTest}.pdf', bbox_inches='tight')
-        # plt.show()
 
-    # paint(ca3Train[3], ca1Train[3], "CA3", "CA1", "Train CA1 and CA3")
+        if metr <= best_param[rate][1]:
+            best_param[rate][0] = param
+            best_param[rate][1] = metr
+            fig.savefig(runPath+f'plot/{numTest}.pdf', bbox_inches='tight')
 
-    # runPath = createWorkDirectory(NUMBERTEST)
-    #
+    print(best_param)
+
+    with open('./RUN/' + NAME_TEST + "/bestParam.pkl", 'wb') as f:
+        pickle.dump(best_param, f)
+
+    plt.figure(figsize=(5, 5), dpi=400)
+
+    metric = np.array([best_param[val][1] for val in best_param])
+    xs = np.array([i for i in best_param.keys()])
+    print(metric)
+    print(xs)
+
+    plt.plot(xs, metric)
+    plt.scatter(xs, metric, s=50, marker='o')
+    plt.ylabel("metric", fontsize=15)
+    plt.xlabel("stimulation amplitude, μA", fontsize=15)
+    plt.savefig("metrics.png", bbox_inches='tight')

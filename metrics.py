@@ -40,7 +40,7 @@ class Metrics:
         TR = self.right - self.argmin
         return [SL, HW, TD, TR]
 
-    def getMinMax(self, filt1, filt3):
+    def getMinMaxDictionary(self, filt1, filt3):
         SL = []
         HW = []
         TD = []
@@ -69,9 +69,43 @@ class Metrics:
         maxTR = max(TR)
         return minSL, maxSL, minHW, maxHW, minTD, maxTD, minTR, maxTR
 
-    def getMetrics(self, signal, filt1, filt3):
-        minSL, maxSL, minHW, maxHW, minTD, maxTD, minTR, maxTR = self.getMinMax(
-            filt1, filt3)
+    def getMinMaxNDArray(self, filt1, filt3):
+        SL = []
+        HW = []
+        TD = []
+        TR = []
+        allMetrics = np.array([self.normMetrics(
+            filt1[s]) for s in range(len(filt1))])
+        for m in allMetrics:
+            SL.append(m[0])
+            HW.append(m[1])
+            TD.append(m[2])
+            TR.append(m[3])
+
+        allMetrics = np.array([self.normMetrics(filt3[s])
+                              for s in range(len(filt3))])
+        for m in allMetrics:
+            SL.append(m[0])
+            HW.append(m[1])
+            TD.append(m[2])
+            TR.append(m[3])
+        minSL = min(SL)
+        maxSL = max(SL)
+        minHW = min(HW)
+        maxHW = max(HW)
+        minTD = min(TD)
+        maxTD = max(TD)
+        minTR = min(TR)
+        maxTR = max(TR)
+        return minSL, maxSL, minHW, maxHW, minTD, maxTD, minTR, maxTR
+
+    def getMetrics(self, signal, filt1, filt3, strDict: str()):
+        if (strDict.lower() == "ndarray"):
+            minSL, maxSL, minHW, maxHW, minTD, maxTD, minTR, maxTR = self.getMinMaxNDArray(
+                filt1, filt3)
+        else:
+            minSL, maxSL, minHW, maxHW, minTD, maxTD, minTR, maxTR = self.getMinMaxDictionary(
+                filt1, filt3)
         self.getProperty(signal)
         SL = (self.argmin - self.semiLeft) / abs(self.minValue)
         SL = (SL - minSL) / (maxSL - minSL)
