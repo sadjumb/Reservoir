@@ -113,23 +113,18 @@ def average(filt):
     return averaged
 
 
-def createTrainModel(averaged, numTest, printShape=False):
+def createTrainModel(averaged, numTest):
     caTest = averaged[numTest]
     Xtr = np.delete(averaged, numTest, 0)
     caTrain = []
     for i in range(len(Xtr)):
         caTrain.append(Xtr[i])
-
-    if printShape:
-        print(f'caTest {np.shape(caTest)}')
-        print(f'Xtr {np.shape(Xtr)}')
-        print(f'caTrain {np.shape(caTrain)}')
-        print()
     return caTest, caTrain
 
 
 def reservoirRun(param, ca1Train, ca3Train, ca3Test, segment):
-    reservoir = Reservoir(param[0], lr=param[1], sr=param[2])
+    reservoir = Reservoir(param[0], lr=param[1],
+                          sr=param[2])  # activation='sigmoid'
     readout = Ridge(ridge=param[3])
 
     for i in range(len(ca3Train)):
@@ -154,50 +149,83 @@ def createWorkDirectory(NUMBERTEST):
 
     runPath += str(NUMBERTEST) + '/'
     os.mkdir(runPath)
-    os.mkdir(runPath+'ca1')
-    os.mkdir(runPath+'ca3')
+    # os.mkdir(runPath+'ca1')
+    # os.mkdir(runPath+'ca3')
     os.mkdir(runPath+'plot')
     return runPath
 
 
-def paint(y1, y2, label1, label2, title):
-    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 5))
-    ax.plot(y1, label=label1, color="blue")
-    ax.plot(y2, label=label2, color="red")
-    ax.grid()
-    fig.legend()
-    ax.set_title(title)
-    plt.show()
-    plt.close(fig)
+def plotSignal(true1, pred1, coeff1_1, coeff2_1, trueM1, predM1, numTest):
+    plt.subplot().clear()
+    plt.close()
+    fig, ax = plt.subplots(1, figsize=(20, 10), dpi=400)
+    fig.subplots_adjust(left=0.2)
+    x1 = np.linspace(0, len(true1)/20, len(true1))
+    y1 = np.linspace(0, len(pred1)/20, len(pred1))
+
+    left = 0
+    right = MAXLEN/20
+    ax.set_ylim(np.min(np.hstack([true1, pred1])),
+                np.max(np.hstack([true1, pred1])))
+    ax.set_xlim([left, right])
+    ax.plot(x1, true1, label="true")
+    ax.plot(y1, pred1, label="pred")
+
+    metr = 0.2*(coeff1_1[0] - coeff2_1[0])**2 + \
+        0.4*(coeff1_1[1] - coeff2_1[1])**2 + \
+        0.1*(coeff1_1[2] - coeff2_1[2])**2 + \
+        0.3*(coeff1_1[3] - coeff2_1[3])**2
+
+    ax.set_title(f'Test {int(numTest)}. \
+metric = 0.2*({coeff1_1[0]:.2f} - {coeff2_1[0]:.2f})**2 + \
+0.4*({coeff1_1[1]:.2f} - {coeff2_1[1]:.2f})**2 + 0.1*({coeff1_1[2]:.2f} - \
+{coeff2_1[2]:.2f})**2 + 0.3*({coeff1_1[3]:.2f} - {coeff2_1[3]:.2f})**2 \
+=  {metr}')
+
+    ax.plot(np.linspace(trueM1[-2]/20, trueM1[-1]/20, (trueM1[-1]-trueM1[-2])),
+            [true1[trueM1[-2]] for i in range(trueM1[-2], trueM1[-1])],
+            label="true HW", color='green')
+
+    ax.axvline(trueM1[1]/20, label="true TD", color='red')
+    ax.axvline(trueM1[2]/20, label="true TR", color='purple')
+
+    ax.plot(np.linspace(predM1[-2]/20, predM1[-1]/20, (predM1[-1]-predM1[-2])),
+            [pred1[predM1[-2]] for i in range(predM1[-2], predM1[-1])],
+            label="pred HW", color='green')
+
+    ax.axvline(predM1[1]/20, label="pred TD", color='red')
+    ax.axvline(predM1[2]/20, label="pred TR", color='blue')
+    ax.set_ylabel("V, normalized")
+    ax.set_xlabel("t, seconds")
+    ax.legend()
+
+    return fig, metr
 
 
-if __name__ == '__main__':
-    DATA_PATH = 'DATA_DOWN'
-    NAME_TEST = 'DOWN'
-    best_param = {100: [[], float(100)], 200: [[], float(100)], 300: [[], float(100)], 400: [
-        [], float(100)], 500: [[], float(100)], 1000: [[], float(100)]}
-
-    # units: int = None, 0 < lr <= 1: float = 1, sr: float | None = None, ridge
-    param = [75, 0.55, 0.1, 1e-7]
-    start, stop = 0, 10000
-    segment = [start, stop]
-
-    averaged1 = np.load('./' + DATA_PATH + '/CA1_DOWN.npy')
-    averaged3 = np.load('./' + DATA_PATH + '/CA3_DOWN.npy')
-
-    runPath = createWorkDirectory(NAME_TEST)
-
+def loadBestParam(NAME_TEST, best_param):
     if ("bestParam.pkl" in os.listdir('./RUN/' + NAME_TEST)):
         with open('./RUN/' + NAME_TEST + "/bestParam.pkl", 'rb') as f:
             best_param = pickle.load(f)
 
+    return best_param
+
+
+def saveBestParam(NAME_TEST, best_param):
+    with open('./RUN/' + NAME_TEST + "/bestParam.pkl", 'wb') as f:
+        pickle.dump(best_param, f)
+
+
+def runAlg(NAME_TEST, averaged1, averaged3, param, best_param, segment):
+    runPath = createWorkDirectory(NAME_TEST)
+
+    best_param = loadBestParam(NAME_TEST, best_param)
+
     for numTest, rate in zip(range(len(averaged1)), best_param):
-        ca1Test, ca1Train = createTrainModel(averaged1, numTest)  # y
+        _, ca1Train = createTrainModel(averaged1, numTest)  # y
         ca3Test, ca3Train = createTrainModel(averaged3, numTest)  # x
 
         ca3Pred = reservoirRun(
             param, ca1Train, ca3Train, ca3Test, segment)
-
         # Переписать
         m = Metrics(MAXLEN)
         true1 = averaged1[numTest]
@@ -209,36 +237,8 @@ if __name__ == '__main__':
         coeff1_1 = m.getMetrics(pred1, averaged1, averaged3, 'ndarray')
         coeff2_1 = m.getMetrics(true1, averaged1, averaged3, 'ndarray')
 
-        fig, ax = plt.subplots(1, figsize=(20, 10), dpi=400)
-        fig.subplots_adjust(left=0.2)
-        x1 = np.linspace(0, len(true1)/20, len(true1))
-        y1 = np.linspace(0, len(pred1)/20, len(pred1))
-
-        left = 0
-        right = MAXLEN/20
-        ax.set_ylim(np.min(np.hstack([true1, pred1])),
-                    np.max(np.hstack([true1, pred1])))
-        ax.set_xlim([left, right])
-        ax.plot(x1, true1, label="true")
-        ax.plot(y1, pred1, label="pred")
-
-        metr = 0.2*(coeff1_1[0] - coeff2_1[0])**2 + 0.4*(coeff1_1[1] - coeff2_1[1])**2 + \
-            0.1*(coeff1_1[2] - coeff2_1[2])**2 + \
-            0.3*(coeff1_1[3] - coeff2_1[3])**2
-
-        ax.set_title(
-            f'Test {int(numTest)}. metric = 0.2*({coeff1_1[0]:.2f} - {coeff2_1[0]:.2f})**2 + 0.4*({coeff1_1[1]:.2f} - {coeff2_1[1]:.2f})**2 + 0.1*({coeff1_1[2]:.2f} - {coeff2_1[2]:.2f})**2 + 0.3*({coeff1_1[3]:.2f} - {coeff2_1[3]:.2f})**2 =  {metr}')
-        ax.plot(np.linspace(trueM1[-2]/20, trueM1[-1]/20, (trueM1[-1]-trueM1[-2])), [true1[trueM1[-2]]
-                                                                                     for i in range(trueM1[-2], trueM1[-1])], label="true HW", color='green')
-        ax.axvline(trueM1[1]/20, label="true TD", color='red')
-        ax.axvline(trueM1[2]/20, label="true TR", color='purple')
-        ax.plot(np.linspace(predM1[-2]/20, predM1[-1]/20, (predM1[-1]-predM1[-2])), [
-                pred1[predM1[-2]] for i in range(predM1[-2], predM1[-1])], label="pred HW", color='green')
-        ax.axvline(predM1[1]/20, label="pred TD", color='red')
-        ax.axvline(predM1[2]/20, label="pred TR", color='blue')
-        ax.set_ylabel("V, normalized")
-        ax.set_xlabel("t, seconds")
-        ax.legend()
+        fig, metr = plotSignal(true1, pred1, coeff1_1,
+                               coeff2_1, trueM1, predM1, numTest)
 
         if metr <= best_param[rate][1]:
             best_param[rate][0] = param
@@ -246,19 +246,44 @@ if __name__ == '__main__':
             fig.savefig(runPath+f'plot/{numTest}.pdf', bbox_inches='tight')
 
     print(best_param)
+    saveBestParam(NAME_TEST, best_param)
 
-    with open('./RUN/' + NAME_TEST + "/bestParam.pkl", 'wb') as f:
-        pickle.dump(best_param, f)
 
-    plt.figure(figsize=(5, 5), dpi=400)
+if __name__ == '__main__':
+    DATA_DOWN_PATH = 'DATA_DOWN'
+    DATA_UP_PATH = 'DATA_UP'
+    DOWN_TEST = 'DOWN_PAIRED'
+    UP_TEST = 'UP_PAIRED'
 
-    metric = np.array([best_param[val][1] for val in best_param])
-    xs = np.array([i for i in best_param.keys()])
-    print(metric)
-    print(xs)
+    best_param = {200: [[], float(100)],
+                  300: [[], float(100)], 400: [[], float(100)],
+                  500: [[], float(100)], 1000: [[], float(100)]}
 
-    plt.plot(xs, metric)
-    plt.scatter(xs, metric, s=50, marker='o')
-    plt.ylabel("metric", fontsize=15)
-    plt.xlabel("stimulation amplitude, μA", fontsize=15)
-    plt.savefig("metrics.png", bbox_inches='tight')
+    # units: int = None, 0 < lr <= 1: float = 1, sr: float | None = None, ridge
+    param = [50, 0.55, 1, 1e-7]
+    start, stop = 0, 11000
+    segment = [start, stop]
+
+    averaged1 = np.load('./' + DATA_DOWN_PATH + '/CA1_DOWN_PAIRED.npy')
+    averaged1 = np.delete(averaged1, 0, 0)
+
+    averaged3 = np.load('./' + DATA_DOWN_PATH + '/CA3_DOWN_PAIRED.npy')
+    averaged3 = np.delete(averaged3, 0, 0)
+
+    runPath = createWorkDirectory(DOWN_TEST)
+    runAlg(DOWN_TEST, averaged1, averaged3, param, best_param, segment)
+
+    best_param = {200: [[], float(100)],
+                  300: [[], float(100)], 400: [[], float(100)],
+                  500: [[], float(100)], 1000: [[], float(100)]}
+
+    averaged1 = np.load('./' + DATA_UP_PATH + '/CA1_UP_PAIRED.npy')
+    averaged1 = np.delete(averaged1, 0, 0)
+
+    averaged3 = np.load('./' + DATA_UP_PATH + '/CA3_UP_PAIRED.npy')
+    averaged3 = np.delete(averaged3, 0, 0)
+
+    runPath = createWorkDirectory(UP_TEST)
+    # for i in range(param[0], param[0] + 1):
+    runAlg(UP_TEST, averaged1, averaged3, param, best_param, segment)
+    # param[0] += 1

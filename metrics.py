@@ -6,8 +6,9 @@ class Metrics:
         self.maxlen = maxlen
 
     def getProperty(self, signal):
-        self.left = self.right = self.argmin = self.semiLeft = self.semiRight = np.argmin(
-            signal)
+        self.left = self.right = self.argmin =\
+            self.semiLeft = self.semiRight = np.argmin(signal)
+
         self.minValue = signal[self.argmin]
         self.semiMin = self.minValue/2
         mean = np.mean(signal)
@@ -101,11 +102,13 @@ class Metrics:
 
     def getMetrics(self, signal, filt1, filt3, strDict: str()):
         if (strDict.lower() == "ndarray"):
-            minSL, maxSL, minHW, maxHW, minTD, maxTD, minTR, maxTR = self.getMinMaxNDArray(
-                filt1, filt3)
+            minSL, maxSL, minHW, maxHW, minTD, maxTD, minTR, maxTR \
+                = self.getMinMaxNDArray(filt1, filt3)
+
         else:
-            minSL, maxSL, minHW, maxHW, minTD, maxTD, minTR, maxTR = self.getMinMaxDictionary(
-                filt1, filt3)
+            minSL, maxSL, minHW, maxHW, minTD, maxTD, minTR, maxTR \
+                = self.getMinMaxDictionary(filt1, filt3)
+
         self.getProperty(signal)
         SL = (self.argmin - self.semiLeft) / abs(self.minValue)
         SL = (SL - minSL) / (maxSL - minSL)
