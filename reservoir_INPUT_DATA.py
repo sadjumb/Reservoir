@@ -229,8 +229,8 @@ if __name__ == '__main__':
         trueM1 = m.printMetrics(true1)
         predM1 = m.printMetrics(pred1)
 
-        coeff1_1 = m.getMetrics(pred1, filt1, filt3)
-        coeff2_1 = m.getMetrics(true1, filt1, filt3)
+        coeff1_1 = m.getMetrics(pred1, filt1, filt3, '')
+        coeff2_1 = m.getMetrics(true1, filt1, filt3, '')
 
         fig, ax = plt.subplots(1, figsize=(20, 10), dpi=400)
         fig.subplots_adjust(left=0.2)

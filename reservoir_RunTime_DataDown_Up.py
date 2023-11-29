@@ -115,6 +115,7 @@ def average(filt):
 
 def createTrainModel(averaged, numTest):
     caTest = averaged[numTest]
+    
     Xtr = np.delete(averaged, numTest, 0)
     caTrain = []
     for i in range(len(Xtr)):
@@ -126,12 +127,11 @@ def reservoirRun(param, ca1Train, ca3Train, ca3Test, segment):
     reservoir = Reservoir(param[0], lr=param[1],
                           sr=param[2], activation='relu') ## relu ~ function Hevisaide f(x) = if x > 0: x else: 0
     readout = Ridge(ridge=param[3])
-
+    print(ca3Train)
     for i in range(len(ca3Train)):
         train_states = reservoir.run(
             ca3Train[i][segment[0]:segment[1]], reset=False)
         readout = readout.fit(train_states, ca1Train[i])
-        print(ca1Train[i])
 
     test_states = reservoir.run(ca3Test[segment[0]:segment[1]])
     return readout.run(test_states)
@@ -226,6 +226,7 @@ def runAlg(NAME_TEST, averaged1, averaged3, param, best_param, segment):
         ca3Test, ca3Train = createTrainModel(averaged3, numTest)  # x
 
         ca3Pred = reservoirRun(param, ca1Train, ca3Train, ca3Test, segment)
+
         # Переписать
         m = Metrics(MAXLEN)
         true1 = averaged1[numTest]

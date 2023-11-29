@@ -1,3 +1,4 @@
+from cgitb import reset
 import os
 import matplotlib.pyplot as plt
 import numpy as np
@@ -125,27 +126,35 @@ def createTrainModel(averaged, numTest):
     return caTest, caTrain
 
 
-def createAndFitReservoir(param, ca1Train, ca3Train, segment):
+def createAndFitReservoir(param, ca1Train, ca3Train, segment, bug=0):
     #matrix = uniform(param[0], param[0], low=-255, high=255, connectivity=1, input_scaling=0.3, dtype=np.int8)
-    matrix = uniform(param[0], param[0], low=-255, high=255, connectivity=np.random.rand(), dtype=np.int8)
 
-    reservoir = Reservoir(param[0], lr=param[1],
-                          sr=param[2], activation='relu', W=matrix) # relu ~ function Hevisaide f(x) = if x > 0: x else: 0
-    readout = Ridge(ridge=param[3])
-    reservoir._dtype = np.int8
+    reservoir1 = Reservoir(param[0], lr=param[1],
+                          sr=param[2], activation='relu', name=f"Reservoir1-{bug}") # relu ~ function Hevisaide f(x) = if x > 0: x else: 0
+    reservoir2 = Reservoir(param[0], lr=param[1],
+                          sr=param[2], activation='relu', name=f"Reservoir2-{bug}") # relu ~ function Hevisaide f(x) = if x > 0: x else: 0
+    readout1 = Ridge(ridge=param[3], name=f"readout1-{bug}")
+    readout2 = Ridge(ridge=param[3], name=f"readout2-{bug}")
+    
+    model = reservoir1 >> readout1 >> reservoir2 >> readout2
 
     for i in range(len(ca3Train)):
-        train_states = reservoir.run(
-            ca3Train[i][segment[0]:segment[1]], reset=False)
-        readout = readout.fit(train_states, ca1Train[i])
-    return reservoir, readout
+        model = model.fit(ca3Train[i][segment[0]:segment[1]], {f"readout1-{bug}": ca1Train[i], f"readout2-{bug}": ca1Train[i]})
+    #    train_states = reservoir.run(
+    #        ca3Train[i][segment[0]:segment[1]], reset=False)
+    #    readout2 = readout2.fit(train_states, ca1Train[i])
+    return model
 
 
-def reservoirRun(param, ca1Train, ca3Train, ca3Test, segment):
-    reservoir, readout = createAndFitReservoir(param, ca1Train, ca3Train, segment)
 
-    test_states = reservoir.run(ca3Test[segment[0]:segment[1]])
-    return reservoir, readout.run(test_states)
+def reservoirRun(param, ca1Train, ca3Train, ca3Test, segment, bug=0):
+    #reservoir, readout = createAndFitReservoir(param, ca1Train, ca3Train, segment)
+    model = createAndFitReservoir(param, ca1Train, ca3Train, segment, bug)
+    
+
+    #test_states = reservoir.run(ca3Test[segment[0]:segment[1]])
+    #return reservoir, readout.run(test_states)
+    return model, model.run(ca3Test[segment[0]:segment[1]])
 
 
 def createWorkDirectory(NUMBERTEST: int, runPath: str):
@@ -235,7 +244,7 @@ def saveBestW(NAME_TEST, matrW, runPath):
     return
 
 
-def runAlg(NAME_TEST, averaged1, averaged3, param, segment, runPath='./RUN/', printParam: bool = False):
+def runAlg(NAME_TEST, averaged1, averaged3, param, segment, runPath='./RUN/', printParam: bool = False, bug : int = 0):
     runPath = createWorkDirectory(NAME_TEST, runPath)
 
     best_param = loadBestParam(NAME_TEST, runPath)
@@ -245,7 +254,7 @@ def runAlg(NAME_TEST, averaged1, averaged3, param, segment, runPath='./RUN/', pr
         ca3Test, ca3Train = createTrainModel(averaged3, numTest)  # x
 
         reservoir, ca3Pred = reservoirRun(
-            param, ca1Train, ca3Train, ca3Test, segment)
+            param, ca1Train, ca3Train, ca3Test, segment, numTest + bug)
         
         m = Metrics(MAXLEN)
         true1 = averaged1[numTest]
@@ -264,11 +273,13 @@ def runAlg(NAME_TEST, averaged1, averaged3, param, segment, runPath='./RUN/', pr
             best_param[rate][0] = param
             best_param[rate][1] = metr
             fig.savefig(runPath+f'plot/{numTest}.pdf', bbox_inches='tight')
-            saveBestW(rate, scipy.sparse.lil_matrix(reservoir.get_param('W')).toarray(), runPath)
+            #saveBestW(rate, scipy.sparse.lil_matrix(reservoir.get_param(f"Reservoir1-{bug}")[0].get_param('W')).toarray(), runPath)
+        
 
     if printParam:
         print(best_param)
     saveBestParam(NAME_TEST, best_param, runPath)
+    
     return
 
 
@@ -289,8 +300,8 @@ if __name__ == '__main__':
 
     DOWN_TEST = 'DOWN_PAIRED'
     UP_TEST = 'UP_PAIRED'
-
-    runPath = 'RUN_INT'
+    
+    runPath = 'RUN_TWO'
 #{100: [[45, 0.6, 0.01], 0.05828441798710298], 200: [[45, 0.65, 0.01], 0.015095667201725687], 300: [[45, 0.6, 0.01], 0.0034879260683505844], 
 # 400: [[45, 0.6, 0.01], 0.006757728974962087], 500: [[45, 0.65, 0.01], 0.012108583415522779], 1000: [[100, 0.2, 0.1], 0.007068828211455153]}
 
@@ -298,12 +309,19 @@ if __name__ == '__main__':
     param = [55, 0.5, 0.01, 1e-7]
     start, stop = 0, 11000
     segment = [start, stop]
-
-    while param[0] <= 75:
-        for j in range(0, 20):
-            averaged1, averaged3 = loadAveraged(DATA_DOWN_PATH, FILE_DOWN_CA1, FILE_DOWN_CA3)
-            runAlg(DOWN_TEST, averaged1, averaged3, param, segment, runPath)
-
-            averaged1, averaged3 = loadAveraged(DATA_UP_PATH, FILE_UP_CA1, FILE_UP_CA3)
-            runAlg(UP_TEST, averaged1, averaged3, param, segment, runPath)
-        param[0] += 1
+    
+    averaged1, averaged3 = loadAveraged(DATA_DOWN_PATH, FILE_DOWN_CA1, FILE_DOWN_CA3)
+    runAlg(DOWN_TEST, averaged1, averaged3, param, segment, runPath, bug=param[0])
+    averaged1, averaged3 = loadAveraged(DATA_UP_PATH, FILE_UP_CA1, FILE_UP_CA3)
+    runAlg(UP_TEST, averaged1, averaged3, param, segment, runPath)
+    
+    
+    #while param[0] <= 75:
+    #    for j in range(0, 20):
+    #        averaged1, averaged3 = loadAveraged(DATA_DOWN_PATH, FILE_DOWN_CA1, FILE_DOWN_CA3)
+    #        runAlg(DOWN_TEST, averaged1, averaged3, param, segment, runPath, bug=param[0]+j)
+#
+    #        averaged1, averaged3 = loadAveraged(DATA_UP_PATH, FILE_UP_CA1, FILE_UP_CA3)
+    #        runAlg(UP_TEST, averaged1, averaged3, param, segment, runPath)
+    #        
+    #    param[0] += 1

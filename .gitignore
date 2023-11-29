@@ -1,6 +1,0 @@
-#INPUT_DATA/
-*.ipynb
-*.zip
-__pycache__/
-
-!*.py

@@ -100,11 +100,10 @@ class Metrics:
         maxTR = max(TR)
         return minSL, maxSL, minHW, maxHW, minTD, maxTD, minTR, maxTR
 
-    def getMetrics(self, signal, filt1, filt3, strDict: str()):
+    def getMetrics(self, signal, filt1, filt3, strDict: str):
         if (strDict.lower() == "ndarray"):
             minSL, maxSL, minHW, maxHW, minTD, maxTD, minTR, maxTR \
                 = self.getMinMaxNDArray(filt1, filt3)
-
         else:
             minSL, maxSL, minHW, maxHW, minTD, maxTD, minTR, maxTR \
                 = self.getMinMaxDictionary(filt1, filt3)
