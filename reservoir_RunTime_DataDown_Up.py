@@ -114,12 +114,12 @@ def average(filt):
 
 
 def createTrainModel(averaged, numTest):
-    caTest = averaged[numTest]
+    caTest = averaged[numTest].reshape(-1,1)
     
     Xtr = np.delete(averaged, numTest, 0)
     caTrain = []
     for i in range(len(Xtr)):
-        caTrain.append(Xtr[i])
+        caTrain.append(Xtr[i].reshape(-1,1))
     return caTest, caTrain
 
 
@@ -127,18 +127,17 @@ def reservoirRun(param, ca1Train, ca3Train, ca3Test, segment):
     reservoir = Reservoir(param[0], lr=param[1],
                           sr=param[2], activation='relu') ## relu ~ function Hevisaide f(x) = if x > 0: x else: 0
     readout = Ridge(ridge=param[3])
-    print(ca3Train)
+    #print(ca3Train)
     for i in range(len(ca3Train)):
         train_states = reservoir.run(
-            ca3Train[i][segment[0]:segment[1]], reset=False)
+            ca3Train[i], reset=False)
         readout = readout.fit(train_states, ca1Train[i])
 
-    test_states = reservoir.run(ca3Test[segment[0]:segment[1]])
+    test_states = reservoir.run(ca3Test)
     return readout.run(test_states)
 
 
-def createWorkDirectory(NUMBERTEST):
-    runPath = 'RUN'
+def createWorkDirectory(runPath, NUMBERTEST):
     if runPath not in os.listdir(os.getcwd()):
         print(f"Path \"{runPath}\" not in current working directory")
         print(f"Path \"{runPath}\" created")
@@ -204,22 +203,22 @@ metric = 0.2*({coeff1_1[0]:.2f} - {coeff2_1[0]:.2f})**2 + \
 
 
 def loadBestParam(NAME_TEST, best_param):
-    if ("bestParam.pkl" in os.listdir('./RUN/' + NAME_TEST)):
-        with open('./RUN/' + NAME_TEST + "/bestParam.pkl", 'rb') as f:
+    if ("bestParam.pkl" in os.listdir(NAME_TEST)):
+        with open(NAME_TEST + "/bestParam.pkl", 'rb') as f:
             best_param = pickle.load(f)
 
     return best_param
 
 
 def saveBestParam(NAME_TEST, best_param):
-    with open('./RUN/' + NAME_TEST + "/bestParam.pkl", 'wb') as f:
+    with open(NAME_TEST + "/bestParam.pkl", 'wb') as f:
         pickle.dump(best_param, f)
 
 
-def runAlg(NAME_TEST, averaged1, averaged3, param, best_param, segment):
-    runPath = createWorkDirectory(NAME_TEST)
+def runAlg(PATH_RUN, NAME_TEST, averaged1, averaged3, param, best_param, segment):
+    runPath = createWorkDirectory(PATH_RUN, NAME_TEST)
 
-    best_param = loadBestParam(NAME_TEST, best_param)
+    best_param = loadBestParam(runPath, best_param)
 
     for numTest, rate in zip(range(len(averaged1)), best_param):
         _, ca1Train = createTrainModel(averaged1, numTest)  # y
@@ -230,13 +229,16 @@ def runAlg(NAME_TEST, averaged1, averaged3, param, best_param, segment):
         # Переписать
         m = Metrics(MAXLEN)
         true1 = averaged1[numTest]
-        pred1 = ca3Pred[0]
+        
+        ca3Pred = np.reshape(ca3Pred, len(ca3Pred))
+        pred1 = ca3Pred
 
         trueM1 = m.printMetrics(true1)
         predM1 = m.printMetrics(pred1)
 
         coeff1_1 = m.getMetrics(pred1, averaged1, averaged3, 'ndarray')
         coeff2_1 = m.getMetrics(true1, averaged1, averaged3, 'ndarray')
+
 
         fig, metr = plotSignal(true1, pred1, coeff1_1,
                                coeff2_1, trueM1, predM1, numTest)
@@ -247,7 +249,7 @@ def runAlg(NAME_TEST, averaged1, averaged3, param, best_param, segment):
             fig.savefig(runPath+f'plot/{numTest}.pdf', bbox_inches='tight')
 
     print(best_param)
-    saveBestParam(NAME_TEST, best_param)
+    saveBestParam(runPath, best_param)
 
 
 if __name__ == '__main__':
@@ -255,6 +257,7 @@ if __name__ == '__main__':
     DATA_UP_PATH = 'DATA_UP'
     DOWN_TEST = 'DOWN_PAIRED'
     UP_TEST = 'UP_PAIRED'
+    PATH_RUN = 'TEST'
 
     best_param = {200: [[], float(100)],
                   300: [[], float(100)], 400: [[], float(100)],
@@ -271,8 +274,9 @@ if __name__ == '__main__':
     averaged3 = np.load('./' + DATA_DOWN_PATH + '/CA3_DOWN_PAIRED.npy')
     averaged3 = np.delete(averaged3, 0, 0)
 
-    runPath = createWorkDirectory(DOWN_TEST)
-    runAlg(DOWN_TEST, averaged1, averaged3, param, best_param, segment)
+    
+    runPath = createWorkDirectory(PATH_RUN, DOWN_TEST)
+    runAlg(PATH_RUN, DOWN_TEST, averaged1, averaged3, param, best_param, segment)
 
     best_param = {200: [[], float(100)],
                   300: [[], float(100)], 400: [[], float(100)],
@@ -284,5 +288,5 @@ if __name__ == '__main__':
     averaged3 = np.load('./' + DATA_UP_PATH + '/CA3_UP_PAIRED.npy')
     averaged3 = np.delete(averaged3, 0, 0)
 
-    runPath = createWorkDirectory(UP_TEST)
-    runAlg(UP_TEST, averaged1, averaged3, param, best_param, segment)
+    runPath = createWorkDirectory(PATH_RUN, UP_TEST)
+    runAlg(PATH_RUN, UP_TEST, averaged1, averaged3, param, best_param, segment)

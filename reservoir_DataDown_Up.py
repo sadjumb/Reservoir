@@ -117,44 +117,53 @@ def average(filt):
     return averaged
 
 
-def createTrainModel(averaged, numTest):
-    caTest = averaged[numTest]
+def createTrainModel(averaged, numTest, segment = [0, 11000]):
+    start = segment[0]
+    stop = segment[1]
+
+    caTest = averaged[numTest].reshape(-1,1)
+    #caTest = averaged[numTest].reshape(-1,1)
     Xtr = np.delete(averaged, numTest, 0)
     caTrain = []
     for i in range(len(Xtr)):
-        caTrain.append(Xtr[i])
-    return caTest, caTrain
+        caTrain.append(Xtr[i].reshape(-1,1))
+        #caTrain.append(Xtr[i])
+
+    #Y_train_1 = []
+    #for i in range(4):
+    #    diff = np.argmin(caTrain[i]) - np.argmin(Xtr[i])
+    #    Y_train_1.append(caTrain[i][diff:stop+diff].reshape(-1, 1))
+    
+    return caTest, caTrain #Y_train_1
 
 
 def createAndFitReservoir(param, ca1Train, ca3Train, segment, bug=0):
     #matrix = uniform(param[0], param[0], low=-255, high=255, connectivity=1, input_scaling=0.3, dtype=np.int8)
-
+    #[param, lr, sr, ridge, sparce]
     reservoir1 = Reservoir(param[0], lr=param[1],
-                          sr=param[2], activation='relu', name=f"Reservoir1-{bug}") # relu ~ function Hevisaide f(x) = if x > 0: x else: 0
+                           sr=param[2], rc_connectivity=param[4], activation='relu', name=f"Reservoir1-{bug}") # relu ~ function Hevisaide f(x) = if x > 0: x else: 0
     reservoir2 = Reservoir(param[0], lr=param[1],
-                          sr=param[2], activation='relu', name=f"Reservoir2-{bug}") # relu ~ function Hevisaide f(x) = if x > 0: x else: 0
-    readout1 = Ridge(ridge=param[3], name=f"readout1-{bug}")
+                          sr=param[2], rc_connectivity=param[4], activation='relu', name=f"Reservoir2-{bug}") # relu ~ function Hevisaide f(x) = if x > 0: x else: 0
     readout2 = Ridge(ridge=param[3], name=f"readout2-{bug}")
     
-    model = reservoir1 >> readout1 >> reservoir2 >> readout2
+    model = reservoir1 >> reservoir2 >> readout2
 
     for i in range(len(ca3Train)):
-        model = model.fit(ca3Train[i][segment[0]:segment[1]], {f"readout1-{bug}": ca1Train[i], f"readout2-{bug}": ca1Train[i]})
+        model = model.fit(ca3Train[i], {f"readout2-{bug}": ca1Train[i]})
     #    train_states = reservoir.run(
     #        ca3Train[i][segment[0]:segment[1]], reset=False)
     #    readout2 = readout2.fit(train_states, ca1Train[i])
-    return model
-
+    return model, reservoir1, reservoir2, readout2
 
 
 def reservoirRun(param, ca1Train, ca3Train, ca3Test, segment, bug=0):
     #reservoir, readout = createAndFitReservoir(param, ca1Train, ca3Train, segment)
-    model = createAndFitReservoir(param, ca1Train, ca3Train, segment, bug)
+    model, reservoir1, reservoir2, readout2 = createAndFitReservoir(param, ca1Train, ca3Train, segment, bug)
     
 
     #test_states = reservoir.run(ca3Test[segment[0]:segment[1]])
     #return reservoir, readout.run(test_states)
-    return model, model.run(ca3Test[segment[0]:segment[1]])
+    return model, reservoir1, reservoir2, readout2
 
 
 def createWorkDirectory(NUMBERTEST: int, runPath: str):
@@ -253,12 +262,16 @@ def runAlg(NAME_TEST, averaged1, averaged3, param, segment, runPath='./RUN/', pr
         _, ca1Train = createTrainModel(averaged1, numTest)  # y
         ca3Test, ca3Train = createTrainModel(averaged3, numTest)  # x
 
-        reservoir, ca3Pred = reservoirRun(
+        model, reservoir1, reservoir2, readout2 = reservoirRun(
             param, ca1Train, ca3Train, ca3Test, segment, numTest + bug)
         
+        ca3Pred = []
+        for i in range(len(ca3Test)):
+            ca3Pred.append(model.run(ca3Test[i])[0][0])
+
         m = Metrics(MAXLEN)
         true1 = averaged1[numTest]
-        pred1 = ca3Pred[0]
+        pred1 = ca3Pred
 
         trueM1 = m.printMetrics(true1)
         predM1 = m.printMetrics(pred1)
@@ -279,8 +292,6 @@ def runAlg(NAME_TEST, averaged1, averaged3, param, segment, runPath='./RUN/', pr
     if printParam:
         print(best_param)
     saveBestParam(NAME_TEST, best_param, runPath)
-    
-    return
 
 
 def loadAveraged(DATA_DOWN_PATH: str, FILE_CA1: str, FILE_CA3:str):
@@ -305,23 +316,32 @@ if __name__ == '__main__':
 #{100: [[45, 0.6, 0.01], 0.05828441798710298], 200: [[45, 0.65, 0.01], 0.015095667201725687], 300: [[45, 0.6, 0.01], 0.0034879260683505844], 
 # 400: [[45, 0.6, 0.01], 0.006757728974962087], 500: [[45, 0.65, 0.01], 0.012108583415522779], 1000: [[100, 0.2, 0.1], 0.007068828211455153]}
 
-    # units: int = None, 0 < lr <= 1: float = 1, sr: float | None = None, ridge
-    param = [55, 0.5, 0.01, 1e-7]
+    # units: int = None, 0 < lr <= 1: float = 1, sr: float | None = None, ridge, sparce
+    param = [55, 0.5, 0.01, 1e-7, 0.7]
+
+    params = list(range(25, 500, 50))
+    sparcity = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+
+    lr = 0.5
+    sr=0.01
+    ridge = 1e-7
+    
     start, stop = 0, 11000
     segment = [start, stop]
-    
-    averaged1, averaged3 = loadAveraged(DATA_DOWN_PATH, FILE_DOWN_CA1, FILE_DOWN_CA3)
-    runAlg(DOWN_TEST, averaged1, averaged3, param, segment, runPath, bug=param[0])
-    averaged1, averaged3 = loadAveraged(DATA_UP_PATH, FILE_UP_CA1, FILE_UP_CA3)
-    runAlg(UP_TEST, averaged1, averaged3, param, segment, runPath)
-    
-    
-    #while param[0] <= 75:
-    #    for j in range(0, 20):
-    #        averaged1, averaged3 = loadAveraged(DATA_DOWN_PATH, FILE_DOWN_CA1, FILE_DOWN_CA3)
-    #        runAlg(DOWN_TEST, averaged1, averaged3, param, segment, runPath, bug=param[0]+j)
-#
-    #        averaged1, averaged3 = loadAveraged(DATA_UP_PATH, FILE_UP_CA1, FILE_UP_CA3)
-    #        runAlg(UP_TEST, averaged1, averaged3, param, segment, runPath)
-    #        
-    #    param[0] += 1
+
+    #averaged1, averaged3 = loadAveraged(DATA_DOWN_PATH, FILE_DOWN_CA1, FILE_DOWN_CA3)
+    #runAlg(DOWN_TEST, averaged1, averaged3, param, segment, runPath, bug=param[0])
+    #averaged1, averaged3 = loadAveraged(DATA_UP_PATH, FILE_UP_CA1, FILE_UP_CA3)
+    #runAlg(UP_TEST, averaged1, averaged3, param, segment, runPath)
+
+    bug1 = 0
+    bug2 = 5000
+    for param in params:
+        for sparce in sparcity:
+            allParam = [param, lr, sr, ridge, sparce]
+            averaged1, averaged3 = loadAveraged(DATA_DOWN_PATH, FILE_DOWN_CA1, FILE_DOWN_CA3)
+            runAlg(DOWN_TEST, averaged1, averaged3, allParam, segment, runPath, bug=bug1)
+            averaged1, averaged3 = loadAveraged(DATA_UP_PATH, FILE_UP_CA1, FILE_UP_CA3)
+            runAlg(UP_TEST, averaged1, averaged3, allParam, segment, runPath, bug=bug2)
+            bug1 += 5
+            bug2 += 5
